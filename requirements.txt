@@ -2,6 +2,6 @@ streamlit
 langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-openai
-chromadb==0.4.14
 sentence-transformers
 pypdf
+faiss-cpu
