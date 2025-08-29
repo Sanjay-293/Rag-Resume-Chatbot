@@ -89,7 +89,8 @@ def load_pdf_to_docs(file_path: str, source_label: str) -> Tuple[List[Document],
 
 def chunk_documents(pages: List[Document]) -> List[Document]:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=900,\        chunk_overlap=150,
+        chunk_size=900,
+        chunk_overlap=150,
         length_function=len,
         separators=["\n\n", "\n", " ", ""]
     )
