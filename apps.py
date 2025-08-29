@@ -10,7 +10,7 @@ import streamlit as st
 # LangChain / Vector DB
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
 
 # LLMs
@@ -89,15 +89,14 @@ def load_pdf_to_docs(file_path: str, source_label: str) -> Tuple[List[Document],
 
 def chunk_documents(pages: List[Document]) -> List[Document]:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=900,
-        chunk_overlap=150,
+        chunk_size=900,\        chunk_overlap=150,
         length_function=len,
         separators=["\n\n", "\n", " ", ""]
     )
     return splitter.split_documents(pages)
 
 
-def build_index_from_uploads(files: List[io.BytesIO]) -> Tuple[Optional[Chroma], Dict[str, str]]:
+def build_index_from_uploads(files: List[io.BytesIO]) -> Tuple[Optional[FAISS], Dict[str, str]]:
     if not files:
         return None, {}
 
@@ -119,11 +118,7 @@ def build_index_from_uploads(files: List[io.BytesIO]) -> Tuple[Optional[Chroma],
         return None, {}
 
     embeddings = get_embeddings()
-    vectordb = Chroma.from_documents(
-        documents=all_chunks,
-        embedding=embeddings,
-        collection_name="resumes",
-    )
+    vectordb = FAISS.from_documents(all_chunks, embeddings)
 
     return vectordb, name_map
 
@@ -172,12 +167,11 @@ def llm_answer(question: str, docs: List[Document], llm_choice: str) -> str:
         return str(resp)
 
 
-def retrieve(vectordb: Chroma, query: str, k: int, candidate: Optional[str]) -> List[Tuple[Document, float]]:
-    where = None
+def retrieve(vectordb: FAISS, query: str, k: int, candidate: Optional[str]) -> List[Tuple[Document, float]]:
+    docs_and_scores = vectordb.similarity_search_with_score(query, k=k*2)
     if candidate:
-        where = {"candidate_name": {"$eq": candidate}}
-    results = vectordb.similarity_search_with_score(query, k=k, filter=where)
-    return results
+        docs_and_scores = [(d, s) for d, s in docs_and_scores if d.metadata.get("candidate_name") == candidate]
+    return docs_and_scores[:k]
 
 
 # ----------------------------- Streamlit UI ----------------------------- #
@@ -213,7 +207,7 @@ if ("vectordb" not in st.session_state) and uploads:
         st.session_state["vectordb"] = vectordb
         st.session_state["name_map"] = name_map
         if vectordb:
-            st.success(f"Indexed {len(name_map)} resumes with {vectordb._collection.count()} chunks.")
+            st.success(f"Indexed {len(name_map)} resumes.")
 
 vectordb = st.session_state.get("vectordb")
 name_map = st.session_state.get("name_map", {})
@@ -238,8 +232,7 @@ with col1:
 
 if ask and vectordb:
     with st.spinner("Retrieving…"):
-        hits = retrieve(vectordb, question, k=top_k * 2, candidate=candidate or None)
-        hits = sorted(hits, key=lambda x: x[1])[:top_k]
+        hits = retrieve(vectordb, question, k=top_k, candidate=candidate or None)
         docs = [d for d, _ in hits]
         answer = llm_answer(question, docs, llm_choice)
 
@@ -265,4 +258,4 @@ with st.expander("ℹ️ How candidate names are detected"):
         """
     )
 
-st.caption("Built with LangChain, Chroma, and sentence-transformers/all-MiniLM-L6-v2.")
+st.caption("Built with LangChain, FAISS, and sentence-transformers/all-MiniLM-L6-v2.")
