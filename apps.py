@@ -1,4 +1,3 @@
-# app.py
 import os
 import re
 import io
@@ -11,7 +10,7 @@ import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 # LLMs
 try:
@@ -127,7 +126,7 @@ def build_index_from_uploads(files: List[io.BytesIO]) -> Tuple[Optional[FAISS], 
 def get_llm(llm_choice: str):
     if llm_choice == "OpenAI" and ChatOpenAI and os.getenv("OPENAI_API_KEY"):
         return ChatOpenAI(model_name="gpt-4o-mini", temperature=0)
-    if llm_choice == "Ollama" and ChatOllama:
+    if llm_choice == "Ollama" and ChatOllama and os.getenv("RUN_LOCAL_OLLAMA") == "true":
         return ChatOllama(model="llama3", temperature=0)
     return None
 
@@ -175,6 +174,16 @@ def retrieve(vectordb: FAISS, query: str, k: int, candidate: Optional[str]) -> L
     return docs_and_scores[:k]
 
 
+def get_available_llms():
+    available_llms = []
+    if ChatOpenAI and os.getenv("OPENAI_API_KEY"):
+        available_llms.append("OpenAI")
+    if ChatOllama and os.getenv("RUN_LOCAL_OLLAMA") == "true":
+        available_llms.append("Ollama")
+    if not available_llms:
+        available_llms = ["None"]
+    return available_llms
+
 # ----------------------------- Streamlit UI ----------------------------- #
 st.set_page_config(page_title="RAG Resume Chatbot", page_icon="🧠", layout="wide")
 st.title("🧠 RAG Resume Chatbot — LangChain + Streamlit")
@@ -188,15 +197,7 @@ with st.sidebar:
     st.header("Settings")
     top_k = st.slider("Top-K chunks", 2, 12, 6)
 
-    available_llms = []
-    if ChatOpenAI and os.getenv("OPENAI_API_KEY"):
-        available_llms.append("OpenAI")
-    if ChatOllama:
-        available_llms.append("Ollama")
-    if not available_llms:
-        available_llms = ["None"]
-
-    llm_choice = st.selectbox("Choose LLM backend", options=available_llms)
+    llm_choice = st.selectbox("Choose LLM backend", options=get_available_llms())
 
 if build:
     st.session_state.pop("vectordb", None)
@@ -208,7 +209,7 @@ if ("vectordb" not in st.session_state) and uploads:
         st.session_state["vectordb"] = vectordb
         st.session_state["name_map"] = name_map
         if vectordb:
-            st.success(f"Indexed {len(name_map)} resumes.")
+            st.success(f"Indexed {len(name_map)} resumes with {len(vectordb.index_to_docstore_id)} chunks.")
 
 vectordb = st.session_state.get("vectordb")
 name_map = st.session_state.get("name_map", {})
